@@ -1,0 +1,4 @@
+node_modules/
+dist/
+rhasspy-web-dist.tar.gz
+workbench.xmi
