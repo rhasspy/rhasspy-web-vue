@@ -3,7 +3,7 @@
         <!-- Top Bar -->
         <nav class="navbar navbar-expand-sm navbar-dark bg-dark fixed-top">
             <a href="/">
-                <img class="navbar-brand" v-bind:class="spinnerClass" src="/img/logo.png">
+                <img id="logo" class="navbar-brand" v-bind:class="spinnerClass" src="/img/logo.png">
             </a>
 
             <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
@@ -119,6 +119,9 @@
                             Rhasspy will not work correctly until these files are downloaded.
                         </p>
                         <tree-view :data="missingFiles" :options="{ rootObjectKey: 'missing'}"></tree-view>
+                        <br>
+                        <label for="downloadStatus">Status:</label>
+                        <textarea id="downloadStatus" v-model="this.downloadStatus" style="width: 100%;" rows="3"></textarea>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
@@ -186,7 +189,11 @@
 
              missingFiles: {},
 
-             version: ''
+             version: '',
+
+             downloadStatus: '',
+
+             wakeSocket: null
          }
      },
 
@@ -209,6 +216,9 @@
              this.hasAlert = true
              this.alertText = text
              this.alertClass = 'alert-' + level
+
+             // Hide alert after 20 seconds
+             setTimeout(this.clearAlert, 20000)
          },
 
          beginAsync: function() {
@@ -334,6 +344,8 @@
          downloadProfile: function() {
              this.beginAsync()
              this.downloading = true
+             this.downloadStatus = ''
+             setTimeout(this.updateDownloadStatus, 1000)
              ProfileService.downloadProfile()
                  .then(() => {
                      alert("Download is complete. Rhasspy will now restart. Make sure to train before using your profile!")
@@ -344,6 +356,38 @@
                      this.downloading = false
                      this.endAsync()
                  })
+         },
+
+         updateDownloadStatus: function() {
+             ProfileService.downloadStatus()
+                .then((request) => {
+                    this.downloadStatus = request.data
+                })
+
+             if (this.downloading) {
+                 setTimeout(this.updateDownloadStatus, 1000)
+             }
+         },
+
+         connectWakeSocket: function() {
+             // Connect to /api/events/intent websocket
+             var wsProtocol = 'ws://'
+             if (window.location.protocol == 'https:') {
+                 wsProtocol = 'wss://'
+             }
+
+             var wsURL = wsProtocol + window.location.host + '/api/events/wake'
+             this.wakeSocket = new WebSocket(wsURL)
+             this.wakeSocket.onmessage = (evt) => {
+                 $('#logo').css('filter', 'invert()')
+                 setTimeout(() => {
+                     $('#logo').css('filter', 'initial')
+                 }, 2000)
+             }
+             this.wakeSocket.onclose = () => {
+                 // Try to reconnect
+                 setTimeout(this.connectWakeSocket, 1000)
+             }
          }
      },
 
@@ -355,6 +399,7 @@
          this.getCustomWords()
          this.getUnknownWords()
          this.getProblems()
+         this.connectWakeSocket()
          this.$options.sockets.onmessage = function(event) {
              this.rhasspyLog = event.data + '\n' + this.rhasspyLog
          }

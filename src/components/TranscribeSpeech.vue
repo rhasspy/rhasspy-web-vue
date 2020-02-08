@@ -20,6 +20,10 @@
                                 title="Record a voice command while held, interpret when released"
                                 :disabled="interpreting || (holdRecording && !tapRecording)">{{ tapRecording ? 'Tap to Stop' : 'Tap to Record' }}</button>
                     </div>
+                    <div class="col-auto">
+                        <button type="button" class="btn btn-success" @click="this.playLastVoiceCommand"
+                                title="Play last voice command"><i class="fas fa-play"></i></button>
+                    </div>
                 </div>
             </div>
             <div class="form-group">
@@ -132,7 +136,9 @@
              audioContext: null,
              recorder: null,
 
-             sendHass: true
+             sendHass: true,
+
+             intentSocket: null
          }
      },
 
@@ -267,7 +273,35 @@
              event.preventDefault()
              PronounceService.saySentence(this.sentence)
                   .catch(err => this.$parent.error(err))
+         },
+
+         playLastVoiceCommand: function(event) {
+             TranscribeService.playRecording()
+                  .catch(err => this.$parent.error(err))
+         },
+
+         connectIntentSocket: function() {
+             // Connect to /api/events/intent websocket
+             var wsProtocol = 'ws://'
+             if (window.location.protocol == 'https:') {
+                 wsProtocol = 'wss://'
+             }
+
+             var wsURL = wsProtocol + window.location.host + '/api/events/intent'
+             this.intentSocket = new WebSocket(wsURL)
+             this.intentSocket.onmessage = (evt) => {
+                 this.jsonSource = JSON.parse(evt.data)
+                 this.sentence = this.jsonSource.raw_text
+             }
+             this.intentSocket.onclose = () => {
+                 // Try to reconnect
+                 setTimeout(this.connectIntentSocket, 1000)
+             }
          }
+     },
+
+     mounted: function() {
+         this.connectIntentSocket()
      }
  }
 </script>
